@@ -1,0 +1,8 @@
+*.app
+dist/
+build/
+__pycache__/
+*.pyc
+*.spec
+.DS_Store
+reports/
