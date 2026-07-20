@@ -5,5 +5,7 @@ __pycache__/
 *.pyc
 *.spec
 .DS_Store
+Thumbs.db
+*.exe
 reports/
 .claude/

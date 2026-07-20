@@ -1,7 +1,7 @@
 """Render a WeeklyReport to text using the standard template format."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from src.models import WeeklyReport, DayBlock
 from config import (
@@ -17,14 +17,43 @@ from config import (
 from src.organizer.week_numbering import format_date_range
 
 
-def render_report(report: WeeklyReport) -> str:
-    """Render a WeeklyReport to a formatted text string.
+# Column where "天" should align across both sections
+TIAN_COLUMN = 55
 
-    Matches the existing weekly report template format.
+
+def _display_width(s: str) -> int:
+    """Calculate display width using Unicode East Asian Width.
+    'W' (Wide) and 'F' (Fullwidth) chars = 2 columns, others = 1.
     """
+    import unicodedata
+    w = 0
+    for ch in s:
+        ea = unicodedata.east_asian_width(ch)
+        if ea in ('W', 'F'):
+            w += 2
+        else:
+            w += 1
+    return w
+
+
+def _align_allocation(prefix: str, allocation: str, target_col: int = TIAN_COLUMN) -> str:
+    """Return (prefix + padding + allocation) such that the character
+    right after the numeric part of `allocation` lands at `target_col`.
+
+    Example: _align_allocation("      1、TSSDPro、TSMGN：", "1.0天")
+    → "      1、TSSDPro、TSMGN：                       1.0"
+    """
+    alloc_num = allocation.replace('天', '')
+    prefix_w = _display_width(prefix)
+    alloc_w = _display_width(alloc_num)
+    padding = max(1, target_col - prefix_w - alloc_w)
+    return f"{prefix}{' ' * padding}{alloc_num}"
+
+
+def render_report(report: WeeklyReport) -> str:
+    """Render a WeeklyReport to a formatted text string."""
     lines = []
 
-    # Blank line at start (matching existing format)
     lines.append("")
 
     # Section 1: 待跟踪问题
@@ -38,11 +67,9 @@ def render_report(report: WeeklyReport) -> str:
     lines.append(project_header)
     lines.append(f"    A、{PROFESSIONAL_GROUP}---------------")
 
-    # Day range for header
     day_range = _compute_day_range(report.completed_day_blocks)
     lines.append(f"      {PERSON_NAME}，{report.total_days}天（{day_range}）")
 
-    # Day blocks
     for block in report.completed_day_blocks:
         lines.append(_render_day_block(block))
 
@@ -52,18 +79,14 @@ def render_report(report: WeeklyReport) -> str:
     lines.append(future_header)
     lines.append(f"    A、{PROFESSIONAL_GROUP}---------------")
 
-    # Planned items header
     lines.append(f"      {PERSON_NAME}，{report.planned_days}天（{report.planned_range}）")
 
-    # Planned items — align "天" to same column (63) as day blocks
+    # Planned items — align "天" to same column as completed day blocks
     if report.planned_items:
-        target_col = 63
         for i, (desc, allocation) in enumerate(report.planned_items, start=1):
-            prefix_w = _display_width(f"      {i}、")
-            desc_w = _display_width(desc)
-            alloc_prefix_w = _display_width(allocation.replace('天', ''))
-            padding = ' ' * (target_col - prefix_w - desc_w - alloc_prefix_w)
-            lines.append(f"      {i}、{desc}{padding}{allocation}（{report.planned_range}）")
+            prefix = f"      {i}、{desc}"
+            aligned = _align_allocation(prefix, allocation, TIAN_COLUMN)
+            lines.append(f"{aligned}天（{report.planned_range}）")
 
     # Section 4: 跨周工作
     lines.append("")
@@ -92,7 +115,6 @@ def _compute_day_range(blocks: list) -> str:
 
     weekdays = sorted(set(weekdays))
 
-    # Build compact ranges
     ranges = []
     start = weekdays[0]
     end = weekdays[0]
@@ -114,7 +136,6 @@ def _compute_day_range(blocks: list) -> str:
             parts.append(f"{s}-{e}")
 
     result = "周" + ",".join(parts)
-    # Single range → trailing comma (match existing format: 周1-5, )
     if len(parts) == 1 and '-' in parts[0]:
         result += ", "
     return result
@@ -126,36 +147,17 @@ def _cn_to_num(cn: str) -> int:
     return mapping.get(cn, 0)
 
 
-def _display_width(s: str) -> int:
-    """Calculate display width using Unicode East Asian Width.
-    'W' (Wide) and 'F' (Fullwidth) chars = 2 columns, others = 1.
-    """
-    import unicodedata
-    w = 0
-    for ch in s:
-        ea = unicodedata.east_asian_width(ch)
-        if ea in ('W', 'F'):
-            w += 2
-        else:
-            w += 1
-    return w
-
-
 def _render_day_block(block: DayBlock) -> str:
     """Render a single day block."""
     lines = []
 
-    # Main line with "天" aligned to column 63
     prefix = f"      {block.day_index}、{SUB_PROJECT}："
-    prefix_w = _display_width(prefix)
-    alloc_prefix_w = _display_width(block.allocation.replace('天', ''))  # "1.0"
-    padding = ' ' * (63 - prefix_w - alloc_prefix_w)
-    main_line = f"{prefix}{padding}{block.allocation}（{block.weekday_range}, ）,     {block.completion}"
+    aligned = _align_allocation(prefix, block.allocation, TIAN_COLUMN)
+    main_line = f"{aligned}天（{block.weekday_range}, ）,     {block.completion}"
     lines.append(main_line)
 
     # Task sub-items
     for i, task in enumerate(block.tasks):
-        # Last task ends with "。", others with "，"
         if i == len(block.tasks) - 1:
             lines.append(f"         {i+1}). {task}。")
         else:
@@ -169,16 +171,7 @@ def save_report(
     output_dir: str = DEFAULT_OUTPUT_DIR,
     draft: bool = True,
 ) -> Path:
-    """Save a rendered report to a file.
-
-    Args:
-        report: The WeeklyReport to save.
-        output_dir: Directory to save the report in.
-        draft: If True, append '_草稿' to filename.
-
-    Returns:
-        Path to the saved file.
-    """
+    """Save a rendered report to a file."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
