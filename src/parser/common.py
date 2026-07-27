@@ -10,13 +10,14 @@ HEADER_PATTERN = re.compile(
     r'齐涛-(.+?)工作汇报[（(](\d{4}-\d{2}-\d{2})[）)]'
 )
 
-# Task item patterns - handles both 1). and 1） numbering styles
+# Task item patterns - handles 1). , 1）. , (1). , (1）. numbering styles
 OLD_TASK_PATTERN = re.compile(r'(\d+)[\)）][.．。]?\s*(.+?)\s*$')
-NEW_TASK_PATTERN = re.compile(r'(\d+)[\)）][.．。]?\s*(.+?)\s*$')
+PAREN_TASK_PATTERN = re.compile(r'[（(](\d+)[)）][.．。]?\s*(.+?)\s*$')
 
 # Review item pattern: 功能 #12345 (状态): 描述 -100%；
+# Also handles (1). 功能 #12345 (状态): 描述 -100%； prefix
 REVIEW_ITEM_PATTERN = re.compile(
-    r'(?:功能|BUG)\s+#\d+\s*\([^)]*\):\s*(.+?)\s*-\d+%[；;]?\s*$'
+    r'(?:[（(]\d+[)）][.．。]?\s*)?(?:功能|BUG)\s+#\d+\s*\([^)]*\):\s*(.+?)\s*-\d+%[；;]?\s*$'
 )
 
 # Attendance patterns
@@ -76,14 +77,17 @@ def detect_format(text: str) -> str:
 
 
 def parse_task_items(text: str) -> List[str]:
-    """Parse numbered task items like '1). task description，' or '1). task description。'"""
+    """Parse numbered task items like '1). task', '1）. task', '(1). task', '(1）. task'."""
     tasks = []
     for line in text.split('\n'):
         stripped = line.strip()
         if not stripped:
             continue
-        m = OLD_TASK_PATTERN.match(stripped)
+        # Try both patterns: "1)." style and "(1)." style
+        m = OLD_TASK_PATTERN.match(stripped) or PAREN_TASK_PATTERN.match(stripped)
         if m:
+            # Group index: OLD_TASK_PATTERN and PAREN_TASK_PATTERN both have
+            # the digit as group 1 and the content as group 2
             task = m.group(2).strip()
             # Strip trailing Chinese punctuation
             task = re.sub(r'[，,。\.；;、]+$', '', task)

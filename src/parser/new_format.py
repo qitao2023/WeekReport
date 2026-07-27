@@ -45,9 +45,10 @@ def parse_new_format(entry_text: str) -> DailyEntry:
     lines = entry_text.split('\n')
 
     # Section pattern: 1）新增, 2）复测, 3）审核/复核, 4）其他
+    # Also matches annotated headers like 1）新增(1条）： or 2）审核/复核(6条)：
     # Only matches known section names (NOT task items like 1）task description）
     SECTION_NAMES = r'(新增|复测|审核/复核|其他)'
-    section_pattern = re.compile(r'^\d）' + SECTION_NAMES + r'\s*[：:]?\s*$')
+    section_pattern = re.compile(r'^\d）' + SECTION_NAMES + r'(?:[（(]\d+条[）)])?\s*[：:]?\s*$')
 
     current_section = None
     current_section_text = []
